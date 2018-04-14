@@ -1,0 +1,1303 @@
+//Initialisation of motor dir and pwm pins
+int pwm1 = 12, pwm2 = 11, pwm3 = 10, pwm4 = 9;
+int dir1 = 34, dir2 = 36, dir3 = 38, dir4 = 40;
+
+int set = 0;
+int h = 0;
+int check = 0;
+int initial = 0;
+int retry = 0;
+int stable = 0;
+
+int back = 0;
+unsigned int flag = 0;
+int flagzone = 0;
+int Bot_state = 0;
+int lz1 = 0;
+
+// LSA1, LSA2, LSA3 junction count variables
+unsigned int countJP1 = 0;
+unsigned int countJP2 = 0;
+unsigned int countJP3 = 0;
+
+int tz1 = 42;
+int tz2 = 44;
+int tz3 = 46;
+
+int throw1 = 25;
+int throw2 = 31;
+int throw3 = 29;
+int thrown = 37;
+
+//Initialisation of LSA1, LSA2, LSA3 RX, TX, Jpulse, Serial encoder pins
+byte rxLSA1 = 18, txLSA1 = 19, rxLSA2 = 16, txLSA2 = 17, rxLSA3 = 14, txLSA3 = 15;
+byte sEN_LSA1 = 24, sEN_LSA2 = 28,  sEN_LSA3 = 23;
+byte jPulse_LSA1 = 22, jPulse_LSA2 = 30, jPulse_LSA3 = 32;
+
+//Initialisation of SET POINT, LSA Position Values, error Values, Last Error
+int setPoint = 35;
+int posValLSA1 = 35, posValLSA2 = 35, posValLSA3 = 35;
+int errorLSA1 = 0, errorLSA2 = 0, errorLSA3 = 0;
+int lastError_LSA1 = 0, lastError_LSA2 = 0, lastError_LSA3 = 0;
+
+// Initialisation of PID constants
+float kp = 10.5, kd = 7.0;          // PID constants of LSA2, LSA3
+float kp1 = 10.5, kd1 = 7.0;       // PID constants of LSA1
+float kp2 = 0.65, kd2 = 0.15;     // bot state = 1
+float p = 0.0, d = 0.0;           // PID constants of LSA2, LSA3
+float p1 = 0.0, d1 = 0.0;         // PID constants of LSA1
+
+// Initialisation of motor speed variables
+int motorPWM1 = 0, motorPWM2 = 0, motorPWM3 = 0;
+
+// Initialisation of address, command, data for LSA1, LSA2, LSA3
+char addressLSA1 = 0x01, addressLSA2 = 0x02, addressLSA3 = 0x03;
+char commandLSA1, dataLSA1, commandLSA2, dataLSA2, commandLSA3, dataLSA3;
+
+// Update commands for settings of LSA through codes
+void sendCommand_LSA1(char, char, char);
+void sendCommand_LSA2(char, char, char);
+void sendCommand_LSA3(char, char, char);
+
+// Declaration of line following functions
+void correction_LSA2();
+void correction_LSA3();
+// For LSA1
+void correction_LSAline();
+void correction();
+
+
+void setup() {
+
+  Serial.begin(230400);      //Serial monitor
+  Serial1.begin(230400);    //LSA-1
+  Serial2.begin(230400);    //LSA-3
+  Serial3.begin(230400);    //LSA-2
+
+  pinMode(tz1, INPUT);
+  pinMode(tz2, INPUT);
+  pinMode(tz3, INPUT);
+
+  pinMode(throw1, OUTPUT);
+  pinMode(throw2, OUTPUT);
+  pinMode(throw3, OUTPUT);
+
+  digitalWrite(throw1, LOW);
+  digitalWrite(throw2, LOW);
+  digitalWrite(throw3, LOW);
+
+  pinMode(thrown, INPUT);
+
+  pinMode(dir1, OUTPUT);
+  pinMode(dir2, OUTPUT);
+  pinMode(dir3, OUTPUT);
+  pinMode(dir4, OUTPUT);
+
+  pinMode(pwm1, OUTPUT);
+  pinMode(pwm2, OUTPUT);
+  pinMode(pwm3, OUTPUT);
+  pinMode(pwm4, OUTPUT);
+
+  pinMode(jPulse_LSA1, INPUT_PULLUP);
+  pinMode(jPulse_LSA2, INPUT_PULLUP);
+  pinMode(jPulse_LSA3, INPUT_PULLUP);
+
+  pinMode(sEN_LSA1, OUTPUT);
+  pinMode(sEN_LSA2, OUTPUT);
+  pinMode(sEN_LSA3, OUTPUT);
+
+  analogWrite(pwm1, 0);
+  analogWrite(pwm2, 0);
+  analogWrite(pwm3, 0);
+  analogWrite(pwm4, 0);
+
+  digitalWrite(dir1, LOW);
+  digitalWrite(dir2, LOW);
+  digitalWrite(dir3, LOW);
+  digitalWrite(dir4, LOW);
+
+  digitalWrite(jPulse_LSA3, LOW);
+  digitalWrite(jPulse_LSA2, LOW);
+  digitalWrite(jPulse_LSA1, LOW);
+
+  digitalWrite(sEN_LSA1, HIGH);
+  digitalWrite(sEN_LSA2, HIGH);
+  digitalWrite(sEN_LSA3, HIGH);
+
+  attachInterrupt(digitalPinToInterrupt(jPulse_LSA1), count1, RISING);
+  attachInterrupt(digitalPinToInterrupt(jPulse_LSA2), count2, RISING);
+  attachInterrupt(digitalPinToInterrupt(jPulse_LSA3), count3, RISING);
+  //  attachInterrupt(digitalPinToInterrupt(interrupt), rest, RISING);
+
+  commandLSA1 = 'D';
+  dataLSA1 = 0x02;
+  sendCommand_LSA1(commandLSA1, dataLSA1, addressLSA1);
+
+  commandLSA2 = 'D';
+  dataLSA2 = 0x02;
+  sendCommand_LSA2(commandLSA2, dataLSA2, addressLSA2);
+
+  commandLSA3 = 'D';
+  dataLSA3 = 0x02;
+  sendCommand_LSA3(commandLSA3, dataLSA3, addressLSA3);
+
+}
+
+void sendCommand_LSA1(char command, char data, char address) {
+  char checksum = address + command + data;
+
+  Serial1.write(address);
+  Serial1.write(command);
+  Serial1.write(data);
+  Serial1.write(checksum);
+}
+
+void sendCommand_LSA3(char command, char data, char address) {
+  char checksum = address + command + data;
+
+  Serial3.write(address);
+  Serial3.write(command);
+  Serial3.write(data);
+  Serial3.write(checksum);
+}
+
+void sendCommand_LSA2(char command, char data, char address) {
+  char checksum = address + command + data;
+
+  Serial2.write(address);
+  Serial2.write(command);
+  Serial2.write(data);
+  Serial2.write(checksum);
+}
+
+void loop() {
+
+  while (Serial.available() <= 0)
+  {
+    digitalWrite(sEN_LSA1, LOW);
+    digitalWrite(sEN_LSA2, LOW);
+    digitalWrite(sEN_LSA3, LOW);
+
+    // Getting LSA data  ///////////////////////////////////////////////////////////////////////////////////////
+
+    while ((Serial2.available() <= 0) && (Serial1.available() <= 0) && (Serial3.available() <= 0));
+    {
+      posValLSA1 = Serial1.read();
+      posValLSA2 = Serial2.read();
+      posValLSA3 = Serial3.read();
+
+      /* Serial.print("LSA1->");      //For printing the LSA values
+        Serial.print(posValLSA1);
+        Serial.print("LSA2->");
+        Serial.println(posValLSA2);
+        Serial.print("LSA3->");
+        Serial.println(posValLSA3);*/
+    }
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+    digitalWrite(sEN_LSA1, HIGH);
+    digitalWrite(sEN_LSA2, HIGH);
+    digitalWrite(sEN_LSA3, HIGH);
+
+    // If error occured in LSA position values, then ignoure errors /////////////////////////////////////////////
+    if (posValLSA1 != -1)
+      errorLSA1 = posValLSA1 - setPoint;
+
+    if (posValLSA2 != -1)
+      errorLSA2 = posValLSA2 - setPoint;
+
+    if (posValLSA3 != -1)
+      errorLSA3 = posValLSA3 - setPoint;
+
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // Calculate motor speed according to error calculated  ////////////////////////////////////////////////////
+    if (errorLSA1 > 0)   {
+      if (Bot_state == 0) {                                           // PID FOR LINE
+        p1 = (errorLSA1 * kp1) + 70;
+        d1 = (errorLSA1 - lastError_LSA1) * kd1;
+        motorPWM1 = p1 + d1 ;
+      }
+      else if (Bot_state == 1) {                                      // PID FOR JUNCTION
+        p1 = (errorLSA1 * kp2) + 70;
+        d1 = (errorLSA1 - lastError_LSA1) * kd2;
+        motorPWM1 = p1 + d1 ;
+      }
+      else if (Bot_state == 2) {                                      // PID FOR JUNCTION
+        p1 = (errorLSA1 * kp2) + 70;
+        d1 = (errorLSA1 - lastError_LSA1) * kd2;
+        motorPWM1 = p1 + d1 ;
+      }
+      else if (Bot_state == 3) {                                      // PID FOR JUNCTION
+        p1 = (errorLSA1 * kp1) + 50;
+        d1 = (errorLSA1 - lastError_LSA1) * kd1;
+        motorPWM1 = p1 + d1 ;
+      }
+      if ( motorPWM1 > 255)
+        motorPWM1 = 255;
+    }
+    if (errorLSA1 < 0)   {
+      if (Bot_state == 0) {
+        p1 = ((-errorLSA1) * kp1) + 70;
+        d1 = (errorLSA1 - lastError_LSA1) * kd1 ;
+        motorPWM1 = p1 + d1;
+      }
+      else if (Bot_state == 1) {
+        p1 = ((-errorLSA1) * kp2) + 70;
+        d1 = (errorLSA1 - lastError_LSA1) * kd2 ;
+        motorPWM1 = p1 + d1;
+      }
+      else if (Bot_state == 2) {                                      // PID FOR JUNCTION
+        p1 = ((-errorLSA1) * kp2) + 70;
+        d1 = (errorLSA1 - lastError_LSA1) * kd2;
+        motorPWM1 = p1 + d1 ;
+      }
+      else if (Bot_state == 3) {                                      // PID FOR JUNCTION
+        p1 = ((-errorLSA1) * kp1) + 50;
+        d1 = (errorLSA1 - lastError_LSA1) * kd1;
+        motorPWM1 = p1 + d1 ;
+      }
+      if ( motorPWM1 > 255)
+        motorPWM1 = 255;
+    }
+
+    if (errorLSA2 > 0)   {
+      if (Bot_state == 0) {
+        p = (errorLSA2 * kp) + 20;
+        d = (errorLSA2 - lastError_LSA2) * kd;
+        motorPWM2 = p + d;
+      }
+      else if (Bot_state == 1) {
+        p = (errorLSA2 * kp2) + 40;
+        d = (errorLSA2 - lastError_LSA2) * kd2;
+        motorPWM2 = p + d;
+      }
+      else if (Bot_state == 2) {
+        p = (errorLSA2 * kp2) + 100;
+        d = (errorLSA2 - lastError_LSA2) * kd2;
+        motorPWM2 = p + d;
+      }
+      else if (Bot_state == 3) {
+        p = (errorLSA2 * kp) + 50;
+        d = (errorLSA2 - lastError_LSA2) * kd;
+        motorPWM2 = p + d;
+      }
+      if ( motorPWM2 > 255)
+        motorPWM2 = 255;
+    }
+    if (errorLSA2 < 0)    {
+      if (Bot_state == 0) {
+        p = ((-errorLSA2) * kp) + 120;
+        d = (errorLSA2 - lastError_LSA2) * kd;
+        motorPWM2 = p + d;
+      }
+      else if (Bot_state == 1) {
+        p = ((-errorLSA2) * kp2) + 40;
+        d = (errorLSA2 - lastError_LSA2) * kd2;
+        motorPWM2 = p + d;
+      }
+      else if (Bot_state == 2) {
+        p = ((-errorLSA2) * kp2) + 20;
+        d = (errorLSA2 - lastError_LSA2) * kd2;
+        motorPWM2 = p + d;
+      }
+      else if (Bot_state == 3) {
+        p = ((-errorLSA2) * kp) + 50;
+        d = (errorLSA2 - lastError_LSA2) * kd;
+        motorPWM2 = p + d;
+      }
+      if ( motorPWM2 > 255)
+        motorPWM2 = 255;
+    }
+
+    if (errorLSA3 > 0)  {
+      if (Bot_state == 0) {
+        p = (errorLSA3 * kp) + 20;
+        d = (errorLSA3 - lastError_LSA3) * kd;
+        motorPWM3 = p + d ;
+      }
+      else if (Bot_state == 1) {
+        p = (errorLSA3 * kp2) + 40;
+        d = (errorLSA3 - lastError_LSA3) * kd2;
+        motorPWM3 = p + d ;
+      }
+      else if (Bot_state == 2) {
+        p = (errorLSA3 * kp2) + 100;
+        d = (errorLSA3 - lastError_LSA3) * kd2;
+        motorPWM3 = p + d ;
+      }
+      else if (Bot_state == 3) {
+        p = (errorLSA3 * kp) + 50;
+        d = (errorLSA3 - lastError_LSA3) * kd;
+        motorPWM3 = p + d ;
+      }
+      if ( motorPWM3 > 255)
+        motorPWM3 = 255;
+    }
+    if (errorLSA3 < 0)   {
+      if (Bot_state == 0) {
+        p = ((-errorLSA3) * kp) + 120;
+        d = (errorLSA3 - lastError_LSA3) * kd ;
+        motorPWM3 = p + d;
+      }
+      else if (Bot_state == 1) {
+        p = ((-errorLSA3) * kp2) + 40;
+        d = (errorLSA3 - lastError_LSA3) * kd2 ;
+        motorPWM3 = p + d;
+      }
+      else if (Bot_state == 2) {
+        p = ((-errorLSA3) * kp2) + 100;
+        d = (errorLSA3 - lastError_LSA3) * kd2 ;
+        motorPWM3 = p + d;
+      }
+      else if (Bot_state == 3) {
+        p = ((-errorLSA3) * kp) + 50;
+        d = (errorLSA3 - lastError_LSA3) * kd ;
+        motorPWM3 = p + d;
+      }
+      if ( motorPWM3 > 255)
+        motorPWM3 = 255;
+    }
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    if (initial == 0) {    //Delay time for Lsa to get started
+      delay(1500);
+      initial = 1;
+    }
+
+    // Start Position to Junction at Start Position ///////////////////////////////////////////////////////////
+    if (flag == 0)
+    {
+      analogWrite(pwm1, 120);
+      digitalWrite(dir1, HIGH);
+      analogWrite(pwm4, 120);
+      digitalWrite(dir4, HIGH);
+      // correction();
+      correction_LSA2();
+      correction_LSA3();
+      // If junction after start is detected then, it will go straight until values at LSA1 is not detected in range
+      if (countJP2 >= 1)    {
+        flag = 4;
+      }
+    }
+    // Moves straight until values at LSA1 is not is range  ///////////////////////////////////////////////////////
+    if (flag == 4)   {
+      analogWrite(pwm1, 50);
+      digitalWrite(dir1, HIGH);
+      analogWrite(pwm4, 50); //70
+      digitalWrite(dir4, HIGH);
+      analogWrite(pwm2, 0);
+      digitalWrite(dir3, LOW);
+      analogWrite(pwm3, 0);
+      digitalWrite(dir2, LOW);
+      // void correction_LSA2temp();
+      // Here flagzone is 1 means bot is going in TZ1 area and bot moves throught single LSA area
+      if (errorLSA1 >= -35 && errorLSA1 <= 35)  {//30
+        flagzone = 1;
+        flag = 17;
+      }
+    }
+    //added on 23 feb
+    if (flag == 17) {
+      Bot_state = 1;
+      correction();
+      correction_LSA2();
+      if ((errorLSA1 >= -3 && errorLSA1 <= 3) && (errorLSA2 >= -3 && errorLSA2 <= 3) ) {
+        flag = 1;
+      }
+    }
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+    // Bot is going for loading junction  ////////////////////////////////////////////////////
+    if (flag == 1)   {
+      if (retry == 0) {
+        Bot_state = 0;
+        if (check == 0) {
+          if ((errorLSA2 >= -35 && errorLSA2 <= 35)) {
+            correction();
+            analogWrite(pwm2, 220);  //180
+            digitalWrite(dir2, LOW);
+            analogWrite(pwm3, 220);
+            digitalWrite(dir3, HIGH);
+          }
+          else {
+            check = 1;
+          }
+        }
+        if (check == 1 ) {
+          correction_LSAline();
+          analogWrite(pwm2, 240);
+          digitalWrite(dir2, LOW);
+          analogWrite(pwm3, 240);
+          digitalWrite(dir3, HIGH);
+        }
+        if (check == 2 ) {
+          correction();
+          analogWrite(pwm2, 240);
+          digitalWrite(dir2, LOW);
+          analogWrite(pwm3, 240);
+          digitalWrite(dir3, HIGH);
+        }
+
+        // --->  loading Junction 1   <---
+        if (flagzone == 1) {
+          if ((countJP1) >= 1)     {
+            check = 3;
+            correction();
+            analogWrite(pwm2, 5);
+            digitalWrite(dir2, LOW);
+            analogWrite(pwm3, 5);
+            digitalWrite(dir3, HIGH);
+            if ((errorLSA3 >= -35 && errorLSA3 <= 35) && (errorLSA2 >= -35 && errorLSA2 <= 35) && (errorLSA1 >= -35 && errorLSA1 <= 35) )
+            {
+              analogWrite(pwm2, 65);
+              digitalWrite(dir2, HIGH);
+              analogWrite(pwm3, 65);
+              digitalWrite(dir3, LOW);
+              flag = 12;
+            }
+          }
+
+        }
+
+        // --->  loading Junction 2   <---
+        if (flagzone == 2) {
+          check = 2;
+          if ((errorLSA2 >= -35 && errorLSA2 <= 35) && (errorLSA3 >= -35 && errorLSA3 <= 35)) {
+            correction();
+          }
+          else {
+            correction_LSAline();
+          }
+          if ((countJP1) >= 2)     {
+            check = 3;
+            analogWrite(pwm2, 50);
+            digitalWrite(dir2, LOW);
+            analogWrite(pwm3, 50);
+            digitalWrite(dir3, HIGH);
+            if ((errorLSA3 >= -35 && errorLSA3 <= 35) && (errorLSA2 >= -35 && errorLSA2 <= 35) && (errorLSA1 >= -35 && errorLSA1 <= 35) )
+            {
+              analogWrite(pwm2, 60);
+              digitalWrite(dir2, HIGH);
+              analogWrite(pwm3, 60);
+              digitalWrite(dir3, LOW);
+              flag = 12;
+            }
+          }
+        }
+      }
+
+      //for retrying condition
+      if (retry == 1) {
+        check = 1;
+        if (check == 1 ) {
+          correction();
+          Bot_state = 0;
+          analogWrite(pwm2, 200); //240
+          digitalWrite(dir2, LOW);
+          analogWrite(pwm3, 200);
+          digitalWrite(dir3, HIGH);
+        }
+        if ((countJP1) >= 2) {
+          check = 2;
+          if (check == 2) {
+            analogWrite(pwm2, 90);
+            digitalWrite(dir2, HIGH);
+            analogWrite(pwm3, 90);
+            digitalWrite(dir3, LOW);
+            check = 3;
+          }
+          correction();
+          analogWrite(pwm2, 50);//20
+          digitalWrite(dir2, LOW);
+          analogWrite(pwm3, 50);
+          digitalWrite(dir3, HIGH);
+          if ((errorLSA3 >= -35 && errorLSA3 <= 34) && (errorLSA2 >= -35 && errorLSA2 <= 34))
+          {
+            flag = 18;
+          }
+        }
+      }
+    }
+
+    if ( flag == 18)
+    {
+      correction();
+      correction_LSA2();
+      correction_LSA3();
+      if ((errorLSA3 >= -10 && errorLSA3 <= 10) && (errorLSA2 >= -10 && errorLSA2 <= 10))       {
+        Bot_state = 1;
+        correction();
+        correction_LSA2();
+        correction_LSA3();
+      }
+      if ((errorLSA3 >= -4 && errorLSA3 <= 4) && (errorLSA2 >= -4 && errorLSA2 <= 4) && (errorLSA1 >= -4 && errorLSA1 <= 4) )    {
+        Bot_state = 1;
+        correction();
+        correction_LSA2();
+        correction_LSA3();
+        flag = 5;
+      }
+    }
+
+    //  #flag 12# -->   LSA correction at loading Junctions 1 & 2   <--
+    if ( flag == 12 )
+    {
+      correction();
+      if ((errorLSA3 >= -35 && errorLSA3 <= 35) && (errorLSA2 >= -35 && errorLSA2 <= 35) && (errorLSA1 >= -35 && errorLSA1 <= 35) )
+      {
+        Bot_state = 0;
+        correction();
+        correction_LSA2();
+        correction_LSA3();
+        if ((errorLSA3 >= -10 && errorLSA3 <= 10) && (errorLSA2 >= -10 && errorLSA2 <= 10) && (errorLSA1 >= -10 && errorLSA1 <= 10) )         {
+          Bot_state = 1;
+          correction();
+          correction_LSA2();
+          correction_LSA3();
+        }
+        if ((errorLSA3 >= -5 && errorLSA3 <= 5) && (errorLSA2 >= -5 && errorLSA2 <= 5) && (errorLSA1 >= -5 && errorLSA1 <= 5) )         {
+          Bot_state = 1;
+          correction();
+          correction_LSA2();
+          correction_LSA3();
+          check = 1;
+          flag = 10;
+        }
+      }
+    }
+    /////////////////////////////////////////////////////////////////
+
+
+
+    //  # flag 10 #  -->  Reads signal from pi to decide to go to respective TZ on the basis of color of shuttlecock  <--
+
+    if (flag == 10) {
+      Bot_state = 3;      //fine correction >>>>>>> bot3
+      correction();
+      correction_LSA2();
+      correction_LSA3();
+      // loading for tz1 zone with blue shuttlecock
+      if (digitalRead(tz1) == HIGH) {
+        if (flagzone == 1) {
+          flag = 5;
+          countJP1 = 1;  ///added on 24
+          countJP2 = 1;
+          countJP3 = 0;
+
+        }
+        else if (flagzone == 2 || flagzone == 3) {
+          flag = 6;
+          retry = 0;
+          check = 1;
+          back = 1;
+          flagzone = 1;
+          countJP1 = 1;
+          countJP2 = 0;
+          countJP3 = 0;
+        }
+      }
+      // loading for tz2 zone with violet shuttlecock
+      if (digitalRead(tz2) == HIGH) {
+        if (flagzone == 2 || flagzone == 3) {
+          flag = 5;
+          flagzone = 2;
+        }
+        if (flagzone == 1) {
+          flag = 1;
+          flagzone = 2;
+          retry = 1;
+          countJP1 = 1;
+          countJP2 = 1;
+          countJP3 = 0;
+        }
+      }
+      // loading for tz3 with golden shuttlecock
+      if (digitalRead(tz3) == HIGH) {
+        if (flagzone == 2 || flagzone == 3) {
+          flag = 5;
+          flagzone = 3;
+        }
+        if (flagzone == 1) {
+          flag = 1;
+          flagzone = 3;
+          retry = 1;
+          countJP1 = 1;
+          countJP2 = 1;
+          countJP3 = 0;
+        }
+      }
+    }
+    ////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+    //    # flag 5 #   -->  bot is moving in the TZ, by line following using LSA2 & LSA3
+    if (flag == 5)   {
+      Bot_state = 3;
+      correction_LSA2();
+      correction_LSA3();
+      //  BOT moves towards TZ
+      analogWrite(pwm1, 255);
+      digitalWrite(dir1, HIGH);
+      analogWrite(pwm4, 255);
+      digitalWrite(dir4, HIGH);
+
+      //  # flagzone 1 #  BOT moves towards TZ1
+      if (flagzone == 1)     {
+        if (countJP3 >= 1) {
+          analogWrite(pwm1, 80);
+          digitalWrite(dir1, HIGH);
+          analogWrite(pwm4, 80);
+          digitalWrite(dir4, HIGH);
+          correction_LSA2();
+          correction_LSA3();
+        }
+        if (countJP3 >= 2 || countJP2 >= 3)     {
+          analogWrite(pwm1, 25);
+          digitalWrite(dir1, HIGH);
+          analogWrite(pwm4, 25);
+          digitalWrite(dir4, HIGH);
+          correction_LSA2();
+          correction_LSA3();
+          if ((errorLSA1 >= -35 && errorLSA1 <= 32))      {
+            flag = 3;
+          }
+        }
+      }
+
+      //  # flagzone 2 #  BOT moves towards TZ2
+      if (flagzone == 2)     {
+        if (countJP3 >= 1) {       // speed of the bot in flagzone 2 and flagzone 3 is decreased linearly on 5th feb
+          analogWrite(pwm1, 100);
+          digitalWrite(dir1, HIGH);
+          analogWrite(pwm4, 100);
+          digitalWrite(dir4, HIGH);
+          correction_LSA2();
+          correction_LSA3();
+        }
+        if (countJP3 >= 2 || countJP2 >= 3)      {
+          analogWrite(pwm1, 20);//50
+          digitalWrite(dir1, HIGH);
+          analogWrite(pwm4, 20);
+          digitalWrite(dir4, HIGH);
+          if ((errorLSA1 >= -35 && errorLSA1 <= 32))        {
+            flag = 3;
+          }
+        }
+      }
+
+      //  # flagzone 3 #  BOT moves towards TZ3
+      if (flagzone == 3)    {
+        if (countJP3 >= 4) {
+          analogWrite(pwm1, 80);
+          digitalWrite(dir1, HIGH);
+          analogWrite(pwm4, 80);
+          digitalWrite(dir4, HIGH);
+          correction_LSA2();
+          correction_LSA3();
+        }
+        if (countJP3 >= 5 || countJP2 >= 6)     {
+          analogWrite(pwm1, 20);//50
+          digitalWrite(dir1, HIGH);
+          analogWrite(pwm4, 20);
+          digitalWrite(dir4, HIGH);
+          if ((errorLSA1 >= -35 && errorLSA1 <= 32))     {
+            flag = 3;
+          }
+        }
+      }
+    }
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+    //   # flag 3 #   --> LSA correction at TZ1, TZ2, TZ3 stop Junction   <--
+    if (flag == 3)  {                  //correction code, the autonomous bot will correct itself before throwing the shuttlecock
+      correction();
+      correction_LSA2();
+      correction_LSA3();
+      if ((errorLSA3 >= -10 && errorLSA3 <= 10) && (errorLSA2 >= -10 && errorLSA2 <= 10) && (errorLSA1 >= -10 && errorLSA1 <= 10))   {
+        Bot_state = 1;
+        correction();
+        correction_LSA2();
+        correction_LSA3();
+        flag = 2;
+      }
+    }
+    //////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+    //   # flag 2 #   --> BOT throws Shuttlecock by giving signal to MEGA  <--
+    if (flag == 2)    {
+      correction();
+      correction_LSA2();
+      correction_LSA3();
+      if (set == 0)     {
+        if ((errorLSA3 >= -3 && errorLSA3 <= 3) && (errorLSA2 >= -3 && errorLSA2 <= 3) && (errorLSA1 >= -3 && errorLSA1 <= 3))      {
+          correction();
+          correction_LSA2();
+          correction_LSA3();
+
+          //  BOT throws blue shuttlecock
+          if (flagzone == 1) {
+            digitalWrite(throw1, HIGH);
+            if (digitalRead(thrown) == HIGH)       {
+              digitalWrite(throw1, LOW);
+              countJP1 = 0;
+              countJP2 = 0;
+              countJP3 = 0;
+              flag = 6;
+            }
+            set = 1;
+          }
+
+          //  BOT throws violet shuttlecock
+          if (flagzone == 2) {
+            digitalWrite(throw2, HIGH);
+            if (digitalRead(thrown) == HIGH)    {
+              digitalWrite(throw2, LOW);
+              countJP1 = 0;
+              countJP2 = 0;
+              countJP3 = 0;
+              flag = 6;
+            }
+            set = 1;
+          }
+
+          //  BOT throws golden shuttlecock
+          if (flagzone == 3) {
+            digitalWrite(throw3, HIGH);
+            if (digitalRead(thrown) == HIGH)       {
+              digitalWrite(throw3, LOW);
+              countJP1 = 0;
+              countJP2 = 0;
+              countJP3 = 0;
+              flag = 6;
+            }
+            set = 1;
+          }
+        }
+      }
+      if (set == 1) {
+        if ((errorLSA3 >= -10 && errorLSA3 <= 10) && (errorLSA2 >= -10 && errorLSA2 <= 10) && (errorLSA1 >= -10 && errorLSA1 <= 10))       {
+          correction();
+          correction_LSA2();
+          correction_LSA3();
+          if (flagzone == 1) {
+            if (digitalRead(thrown) == HIGH)       {
+              digitalWrite(throw1, LOW);
+              countJP1 = 0;
+              countJP2 = 0;
+              countJP3 = 0;
+              flag = 6;
+              set = 0;
+            }
+          }
+          if (flagzone == 2) {
+            if (digitalRead(thrown) == HIGH)         {
+              digitalWrite(throw2, LOW);
+              countJP1 = 0;
+              countJP2 = 0;
+              countJP3 = 0;
+              flag = 6;
+              set = 0;
+            }
+          }
+          if (flagzone == 3) {
+            if (digitalRead(thrown) == HIGH)        {
+              digitalWrite(throw3, LOW);
+              countJP1 = 0;
+              countJP2 = 0;
+              countJP3 = 0;
+              flag = 6;
+              set = 0;
+            }
+          }
+        }
+      }
+    }
+    //////////////////////////////////////////////////////////////////////////////
+
+
+    //   # flag 6 #   -->  BOT moves from TZ to loading point 1 or 2 according to flagzone <--
+    if (flag == 6)
+    {
+      Bot_state = 3;
+      analogWrite(pwm1, 255);
+      digitalWrite(dir1, LOW);
+      analogWrite(pwm4, 255);
+      digitalWrite(dir4, LOW);
+      correction_LSA2();
+      correction_LSA3();
+
+      if (flagzone == 1)
+      {
+        if ( back == 0)
+        {
+          if (countJP3 == 2)
+          {
+            correction_LSA2();
+            correction_LSA3();
+            analogWrite(pwm1, 120);   //100
+            digitalWrite(dir1, LOW);
+            analogWrite(pwm4, 120);
+            digitalWrite(dir4, LOW);
+          }
+          if (countJP2 >= 2)    {
+            correction_LSA2();
+            correction_LSA3();
+            analogWrite(pwm1, 10);
+            digitalWrite(dir1, LOW);
+            analogWrite(pwm4, 10);
+            digitalWrite(dir4, LOW);
+            if ((errorLSA1 >= -35 && errorLSA1 <= 35))      {
+              flag = 16;
+            }
+          }
+        }
+
+        if ( back == 1)
+        {
+          if (countJP2 == 1)    {
+            analogWrite(pwm1, 130); //100
+            digitalWrite(dir1, LOW);
+            analogWrite(pwm4, 130); //100
+            digitalWrite(dir4, LOW);
+          }
+
+          if (countJP2 >= 2)    {
+            analogWrite(pwm1, 10);
+            digitalWrite(dir1, LOW);
+            analogWrite(pwm4, 10);
+            digitalWrite(dir4, LOW);
+          }
+          if (errorLSA1 >= -35 && errorLSA1 <= 35)        {
+            Bot_state = 3;
+            correction();
+            correction_LSA2();
+            correction_LSA3();
+            if ((errorLSA3 >= -10 && errorLSA3 <= 10) && (errorLSA2 >= -10 && errorLSA2 <= 10) && (errorLSA1 >= -10 && errorLSA1 <= 10))        {
+              Bot_state = 1;
+              correction();
+              correction_LSA2();
+              correction_LSA3();
+              if ((errorLSA3 >= -4 && errorLSA3 <= 4) && (errorLSA2 >= -4 && errorLSA2 <= 4) && (errorLSA1 >= -4 && errorLSA1 <= 4))        {
+                countJP1 = 1;
+                countJP2 = 1;
+                countJP3 = 0;
+                flag = 7;
+                flagzone = 1;
+                back = 0;
+              }
+            }
+          }
+        }
+      }
+
+      //   BOT moves from TZ2 to loading point 2
+      if (flagzone == 2)     {
+
+        if (countJP3 >= 2)      {
+          correction_LSA2();
+          correction_LSA3();
+          countJP1 = 1;
+          countJP2 = 2;
+          countJP3 = 0;
+          flag = 14;
+        }
+      }
+
+      //   BOT moves from TZ3 to loading point 2
+      if (flagzone == 3)   {
+
+        if (countJP2 >= 3 && countJP3 >= 3)        {
+          correction_LSA2();
+          correction_LSA3();
+
+          analogWrite(pwm1, 170);
+          digitalWrite(dir1, LOW);
+          analogWrite(pwm4, 170);
+          digitalWrite(dir4, LOW);
+        }
+        //added so that BOT doesn't oscillates at LZ2
+        if (countJP3 >= 5)        {
+          correction_LSA2();
+          correction_LSA3();
+          countJP1 = 1;
+          countJP2 = 2;
+          countJP3 = 0;
+          flag = 14;
+        }
+      }
+    }
+    /////////////////////////////////////////////////////////////////////////
+
+
+
+    //  # flag 14 #  -->  LSA correction at loading Junction 2  <--
+    if ( flag == 14 )
+    {
+      Bot_state = 3;
+      correction_LSA2();
+      correction_LSA3();
+      analogWrite(pwm1, 0);
+      digitalWrite(dir1, LOW);
+      analogWrite(pwm4, 0);
+      digitalWrite(dir4, LOW);
+
+      //  >>>BLOCK for loading TZ1 shuttlecock from loading point 2
+      if (digitalRead(tz1) == HIGH) {
+        flag = 6;
+        flagzone = 1;
+        back = 1;
+        countJP1 = 1;
+        countJP2 = 1;
+        countJP3 = 0;
+      }
+      if (digitalRead(tz2) == HIGH) {
+        flag = 5;
+        flagzone = 2;
+      }
+      if (digitalRead(tz3) == HIGH) {
+        flag = 5;
+        flagzone = 3;
+      }
+    }
+
+    //////////////////////////////////////////////////////////////////////
+
+
+
+
+    //  # flag 16 #  -->   LSA correction at loading point 1   <--
+    if (flag == 16) {
+      Bot_state = 0;
+      correction();
+      correction_LSA2();
+      correction_LSA3();
+      if ((errorLSA3 >= -10 && errorLSA3 <= 10) && (errorLSA2 >= -10 && errorLSA2 <= 10) && (errorLSA1 >= -10 && errorLSA1 <= 10))        {
+        Bot_state = 1;
+        correction();
+        correction_LSA2();
+        correction_LSA3();
+        if ((errorLSA3 >= -3 && errorLSA3 <= 3) && (errorLSA2 >= -3 && errorLSA2 <= 3) && (errorLSA1 >= -3 && errorLSA1 <= 3))        {
+          Bot_state = 1;// added on 25 feb
+          correction();
+          correction_LSA2();
+          correction_LSA3();
+          countJP1 = 1;
+          countJP2 = 0;
+          countJP3 = 0;
+          flag = 10;
+          flagzone = 1;
+        }
+      }
+    }
+    ////////////////////////////////////////////////////////////////////////
+
+
+
+    //  # flag 7 #   -->    <--
+
+    if (flag == 7)      // this flag is used for returning from tz2 to tz1
+    {
+      Bot_state = 0;      //3
+      analogWrite(pwm2, 155);
+      digitalWrite(dir2, HIGH);
+      analogWrite(pwm3, 155);
+      digitalWrite(dir3, LOW);
+      correction();
+      if (countJP1 >= 2)
+      {
+        //   Bot_state = 3;
+        analogWrite(pwm2, 155);
+        digitalWrite(dir2, HIGH);
+        analogWrite(pwm3, 155);
+        digitalWrite(dir3, LOW);
+
+        correction();
+        /*     analogWrite(pwm2, 90);//200
+             digitalWrite(dir2, HIGH);
+             analogWrite(pwm3, 90);
+             digitalWrite(dir3, LOW);
+        */
+        if ((errorLSA3 >= -35 && errorLSA3 <= 35) && (errorLSA2 >= -35 && errorLSA2 <= 35))
+        {
+          /*       analogWrite(pwm2, 50);//100
+                 digitalWrite(dir2, LOW);
+                 analogWrite(pwm3, 50);
+                 digitalWrite(dir3, HIGH);
+          */      flag = 8;//15
+        }
+      }
+    }
+    ///////////////////////////////////////////////////////////////////////////
+
+
+
+    //  # flag 15 #   -->    <--
+    /*if ( flag == 15 )
+      {
+      if ((errorLSA3 >= -35 && errorLSA3 <= 35) && (errorLSA2 >= -35 && errorLSA2 <= 35))
+      {
+        Bot_state = 0;  //3
+        correction();
+        correction_LSA2();
+        correction_LSA3();
+        /*     analogWrite(pwm2, 40);//100
+             digitalWrite(dir2, LOW);
+             analogWrite(pwm3, 40);
+             digitalWrite(dir3, HIGH);
+    *///     flag = 8;
+    ////
+    //    */
+    ///////////////////////////////////////////////////////////////////////////////
+
+
+
+    //   # flag 8 #   -->   <--
+    if (flag == 8) {
+      //Bot_state = 0;     //0      //added on 20 feb
+      correction();
+      correction_LSA2();
+      correction_LSA3();
+      if ((errorLSA3 >= -35 && errorLSA3 <= 35) && (errorLSA2 >= -35 && errorLSA2 <= 35) && (errorLSA1 >= -35 && errorLSA1 <= 35)) {
+        Bot_state = 0;    //2,     //0
+        correction();
+        correction_LSA2();
+        correction_LSA3();
+
+        if ((errorLSA3 >= -10 && errorLSA3 <= 10) && (errorLSA2 >= -10 && errorLSA2 <= 10) && (errorLSA1 >= -10 && errorLSA1 <= 10)) {
+          Bot_state = 0;      //1
+          correction();
+          correction_LSA2();
+          correction_LSA3();
+        }
+        if ((errorLSA3 >= -3 && errorLSA3 <= 3) && (errorLSA2 >= -2 && errorLSA2 <= 2) && (errorLSA1 >= -1 && errorLSA1 <= 1)) {  //changed from 4 to 5
+          Bot_state = 1;    //1,//0
+          correction();
+          correction_LSA2();
+          correction_LSA3();
+          flag = 100;     //5
+        }
+      }
+    }
+    if (flag == 100)
+    {
+      if ((errorLSA3 >= -1 && errorLSA3 <= 1) && (errorLSA2 >= -2 && errorLSA2 <= 2) && (errorLSA1 >= -3 && errorLSA1 <= 3)) {  //changed from 4 to 5
+        Bot_state = 1;    //1,//0
+        correction();
+        correction_LSA2();
+        correction_LSA3();
+        flag = 5;
+      }
+    }
+
+  }
+  digitalWrite(throw1, LOW);
+}
+
+
+
+void count1() {
+  countJP1++;
+}
+void count2() {
+  countJP2++;
+}
+void count3() {
+  countJP3++;
+}
+
+
+
+void correction_LSA1() {
+
+  if ((errorLSA1 > -4) && (errorLSA1 < 4 )) {
+    lastError_LSA1 = errorLSA1;
+    analogWrite(pwm1, 0);
+  }
+  else if ((errorLSA1 >= 4) && (errorLSA1 <= 35))  {
+    lastError_LSA1 = errorLSA1;
+    digitalWrite(dir1, LOW);
+    analogWrite(pwm1, motorPWM1);
+  }
+  else if ((errorLSA1 <= -4) && (errorLSA1 >= -35))  {
+    lastError_LSA1 = errorLSA1;
+    digitalWrite(dir1, HIGH);
+    analogWrite(pwm1, motorPWM1);
+  }
+  else if (errorLSA1 > 215)  {
+    if (lastError_LSA1 < 0)   {
+      analogWrite(pwm1, 160);
+      digitalWrite(dir1, HIGH);
+    }
+    else    {
+      analogWrite(pwm1, 160);
+      digitalWrite(dir1, LOW);
+    }
+  }
+}
+
+
+void correction_LSA2() {
+  // HIGH <-->LOW when the pcb and motors was not alined as expected
+  if ((errorLSA2 > -4) && (errorLSA2 < 4))  {
+    lastError_LSA2 = errorLSA2;
+    analogWrite(pwm2, 0);
+  }
+  else if ((errorLSA2 >= 4) && (errorLSA2 <= 35)) {
+    lastError_LSA2 = errorLSA2;
+    digitalWrite(dir2, LOW);
+    analogWrite(pwm2, motorPWM2);
+  }
+  else if ((errorLSA2 <= -4) && (errorLSA2 >= -35))  {
+    lastError_LSA2 = errorLSA2;
+    digitalWrite(dir2, HIGH);
+    analogWrite(pwm2, motorPWM2);
+  }
+  else if (errorLSA2 > 215)  {
+    if (lastError_LSA2 < 0)   {
+      analogWrite(pwm2, 160);
+      digitalWrite(dir2, HIGH);
+    }
+    else   {
+      analogWrite(pwm2, 160);  //160
+      digitalWrite(dir2, LOW);
+    }
+  }
+}
+
+void correction_LSA3() {
+  if ((errorLSA3 > -4) && (errorLSA3 < 4))  {
+    lastError_LSA3 = errorLSA3;
+    analogWrite(pwm3, 0);
+  }
+  else if ((errorLSA3 >= 4) && (errorLSA3 <= 35))  {
+    lastError_LSA3 = errorLSA3;
+    digitalWrite(dir3, HIGH);
+    analogWrite(pwm3, motorPWM3);
+  }
+  else if ((errorLSA3 <= -4) && (errorLSA3 >= -35))  {
+    lastError_LSA3 = errorLSA3;
+    digitalWrite(dir3, LOW);
+    analogWrite(pwm3, motorPWM3);
+  }
+  else if (errorLSA3 > 215) {
+    if (lastError_LSA3 < 0)  {
+      analogWrite(pwm3, 160);
+      digitalWrite(dir3, LOW);
+    }
+    else    {
+      analogWrite(pwm3, 160);
+      digitalWrite(dir3, HIGH);
+    }
+  }
+}
+
+
+void correction() {
+  // HIGH TO LOW
+
+  if ((errorLSA1 > -4) && (errorLSA1 < 4))  {
+    lastError_LSA1 = errorLSA1;
+    analogWrite(pwm1, 0);
+    analogWrite(pwm4, 0);
+  }
+  else if ((errorLSA1 >= 4) && (errorLSA1 <= 35))  {
+    lastError_LSA1 = errorLSA1;
+    digitalWrite(dir1, HIGH);
+    analogWrite(pwm1, motorPWM1);
+    digitalWrite(dir4, HIGH);
+    analogWrite(pwm4, motorPWM1);
+  }
+  else if ((errorLSA1 <= -4) && (errorLSA1 >= -35))  {
+    lastError_LSA1 = errorLSA1;
+    digitalWrite(dir1, LOW);
+    analogWrite(pwm1, motorPWM1);
+    digitalWrite(dir4, LOW);
+    analogWrite(pwm4, motorPWM1);
+  }
+  else if (errorLSA1 > 210)  {
+    if (lastError_LSA1 < 0)    {
+      analogWrite(pwm1, 160);
+      digitalWrite(dir1, LOW);
+      analogWrite(pwm4, 160);
+      digitalWrite(dir4, LOW);
+    }
+    else    {
+      analogWrite(pwm1, 160);
+      digitalWrite(dir1, HIGH);
+      analogWrite(pwm4, 160);
+      digitalWrite(dir4, HIGH);
+    }
+  }
+}
+
+
+void correction_LSAline() {
+  // HIGH TO LOW
+  if ((errorLSA1 > -4) && (errorLSA1 < 4))  {
+    lastError_LSA1 = errorLSA1;
+    analogWrite(pwm1, 0);
+    analogWrite(pwm4, 0);
+  }
+  else if ((errorLSA1 >= 4) && (errorLSA1 <= 35))  {
+    lastError_LSA1 = errorLSA1;
+    digitalWrite(dir1, HIGH);
+    analogWrite(pwm1, motorPWM1);
+    digitalWrite(dir4, LOW);
+    analogWrite(pwm4, motorPWM1);
+  }
+  else if ((errorLSA1 <= -4) && (errorLSA1 >= -35)) {
+    lastError_LSA1 = errorLSA1;
+    digitalWrite(dir1, LOW);
+    analogWrite(pwm1, motorPWM1);
+    digitalWrite(dir4, HIGH);
+    analogWrite(pwm4, motorPWM1);
+  }
+  else if (errorLSA1 > 210)  {
+    if (lastError_LSA1 < 0)   {
+      analogWrite(pwm1, 160);
+      digitalWrite(dir1, LOW);
+      analogWrite(pwm4, 160);
+      digitalWrite(dir4, HIGH);
+    }
+    else  {
+      analogWrite(pwm1, 160);
+      digitalWrite(dir1, HIGH);
+      analogWrite(pwm4, 160);
+      digitalWrite(dir4, LOW);
+    }
+  }
+}
+
+
+
+int getJunction() {
+  char address = 0x01;
+  char command = 'X';
+  char data = 0x01;
+  char checksum = address + command + data;
+
+  Serial1.write(address);
+  Serial1.write(command);
+  Serial1.write(data);
+  Serial1.write(checksum);
+
+  while (Serial1.available() <= 0);
+  return (int(Serial1.read()));
+}
+
+
+void clearJunction() {
+  char address = 0x01;
+  char command = 'X';
+  char data = 0x00;
+  char checksum = address + command + data;
+
+  Serial1.write(address);
+  Serial1.write(command);
+  Serial1.write(data);
+  Serial1.write(checksum);
+}
