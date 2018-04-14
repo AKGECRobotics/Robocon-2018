@@ -1,0 +1,309 @@
+#include "PS2X_lib.h" 
+#include <Servo.h>
+
+#define PS2_DAT     22   //Pins for ps2
+#define PS2_CMD     24
+#define PS2_SEL     26
+#define PS2_CLK     28
+
+int dir1 = 40, dir2 = 38, dir3 = 36, dir4 = 34;   //direction pins of motor driver
+int pwm1 = 9, pwm2 = 10, pwm3 = 11, pwm4 = 12;    // pwm pins of motor driver
+int mapped;
+int pwm=180;                 //initial speed
+
+void move_forward();         // drive train controlling loops
+void move_left();
+void move_right();
+void move_backward();
+void move_clockwise();
+void move_anticlockwise();
+
+void initial_condition();
+
+void stick_values();
+
+void release_servo1();        //servo controlling funnctions
+void release_servo2();
+void release_servo3();
+void release_servo4();
+void load_shuttle();
+void load_initialpostion();
+
+int servoPin1 = 7;           // servo piins
+int servoPin2 = 6;
+int servoPin3 = 5;
+int servoPin4 = 4;
+
+int dcv1=30,dcv2=32;
+
+Servo Servo1;
+Servo Servo2;
+Servo Servo3;
+Servo Servo4;
+
+#define pressures   false
+#define rumble      false
+int flagCross = 0;
+
+PS2X ps2x;         // create PS2 Controller Class
+
+int error = 0;
+byte type = 0;
+byte vibrate = 0;
+
+void setup()
+{
+  pinMode(pwm1, OUTPUT);    //pwm
+  pinMode(pwm2, OUTPUT);
+  pinMode(pwm3, OUTPUT);
+  pinMode(pwm4, OUTPUT);
+  pinMode(dir1, OUTPUT);     //dir
+  pinMode(dir2, OUTPUT);
+  pinMode(dir3, OUTPUT);
+  pinMode(dir4, OUTPUT);
+  pinMode(dcv1, OUTPUT);     //dcv
+  pinMode(dcv2, OUTPUT);
+
+  
+  Servo1.attach(servoPin1);  //servo
+  Servo2.attach(servoPin2);
+  Servo3.attach(servoPin3);
+  Servo4.attach(servoPin4);
+  
+  delay(300);  //added delay to give wireless ps2 module some time to startup, before configuring it
+
+   analogWrite(pwm1,0);  // initially pwm is zero
+   analogWrite(pwm2,0);
+   analogWrite(pwm3,0);
+   analogWrite(pwm4,0);
+
+  
+  //setup pins and settings: GamePad(clock, command, attention, data, Pressures?, Rumble?) check for error
+  error = ps2x.config_gamepad(PS2_CLK, PS2_CMD, PS2_SEL, PS2_DAT, pressures, rumble);
+ 
+
+}
+
+void loop() {
+
+  if (error == 1)         //skip loop if no controller found
+    return;
+
+    ps2x.read_gamepad();                     //read controller 
+    ps2x.reconfig_gamepad();                 //configure again automatically each time
+    
+
+        
+if (ps2x.Button(PSB_L2)) 
+ {                                     // INTIAL POSITION FOR THE SERVO MOTORS TO BE PARALLEL TO THE GROUND
+  load_initialpostion();
+  }
+      
+// LOADING ALL THE SHUTTLECOCKS IN ONE GO
+     
+if (ps2x.Button(PSB_R2)) 
+ {
+  load_shuttle();
+ }
+
+//RELEASING CODE ONE BY ONE
+  
+if (ps2x.Button(PSB_TRIANGLE))  //releasing via servo1
+  {
+    release_servo1();
+  }
+    
+if (ps2x.Button(PSB_CIRCLE))     //releasing via servo2
+  {
+    release_servo4();
+  }
+     
+if (ps2x.Button(PSB_CROSS))      //releasing via servo3
+  {
+     release_servo3();
+  }
+
+if (ps2x.Button(PSB_SQUARE))     //releasing via servo3
+  {
+    release_servo2();
+  }
+
+
+//Base motor code
+
+// if ((ps2x.Analog(PSS_LY) > 120 && ps2x.Analog(PSS_LY) < 140) && (ps2x.Analog(PSS_LX) > 120 && ps2x.Analog(PSS_LX) < 140) && (ps2x.Analog(PSS_RY) > 120 && ps2x.Analog(PSS_RY) < 140) && (ps2x.Analog(PSS_RX) > 120 && ps2x.Analog(PSS_RX) < 140))
+//   initial_condition();
+   
+    if((ps2x.Analog(PSS_LY)) > 120  && (ps2x.Analog(PSS_LY) < 140))
+    {
+     analogWrite(pwm2, 0);
+     analogWrite(pwm4, 0);
+    }
+    else if (ps2x.Analog(PSS_LY) < 120)
+      move_forward();
+    else if (ps2x.Analog(PSS_LY) > 140)
+      move_backward();
+   
+    if (ps2x.Button(PSB_L1)) 
+     {
+       if (ps2x.Analog(PSS_RX) < 120)
+        move_anticlockwise();
+       else if (ps2x.Analog(PSS_RX) > 140)
+        move_clockwise();
+       else
+        initial_condition();
+     }
+    else if(ps2x.Analog(PSS_RX) > 120 && ps2x.Analog(PSS_RX) < 140)
+    {
+     analogWrite(pwm1,0);
+     analogWrite(pwm3,0);
+    }
+     else if ((ps2x.Analog(PSS_RX) < 120))
+      move_left();
+     else if ((ps2x.Analog(PSS_RX) > 140))
+      move_right();
+      
+  
+if(ps2x.Button(PSB_R1))  // change pwm from ps2 button
+  {
+   pwm=255;            
+  }
+else
+  {
+   pwm=180 ;          // initial pwm
+  }
+  
+  
+if (ps2x.Button(PSB_PAD_UP))   // controls  FOR DCV (FOR PNEUMATIC CYLINDER)
+  {
+   digitalWrite(dcv1,HIGH);
+   digitalWrite(dcv2,LOW);
+  }
+else if (ps2x.Button(PSB_PAD_DOWN))
+  {
+    digitalWrite(dcv2,HIGH);
+    digitalWrite(dcv1,LOW);
+  }
+else
+  {
+    digitalWrite(dcv1,LOW);
+    digitalWrite(dcv2,LOW);
+  }
+
+  
+    delay(50);
+  //}
+}
+
+
+void move_forward()
+{
+  digitalWrite(dir2, LOW);
+  digitalWrite(dir4, HIGH);
+  mapped = map(ps2x.Analog(PSS_LY), 120, 0, 0,pwm);
+  analogWrite(pwm2, mapped);
+  analogWrite(pwm4, mapped);
+}
+
+void move_backward()
+{
+  digitalWrite(dir2,HIGH);
+  digitalWrite(dir4,LOW);
+  mapped = map(ps2x.Analog(PSS_LY), 140, 255, 0,pwm);
+  analogWrite(pwm2, mapped);
+  analogWrite(pwm4, mapped);
+}
+
+void move_right()
+{
+  digitalWrite(dir1, HIGH);
+  digitalWrite(dir3, LOW);
+  mapped = map(ps2x.Analog(PSS_RX), 140, 255, 0,pwm);
+  analogWrite(pwm1, mapped);
+  analogWrite(pwm3, mapped);
+}
+
+void move_left()
+{
+  digitalWrite(dir1, LOW);
+  digitalWrite(dir3, HIGH);
+  mapped = map(ps2x.Analog(PSS_RX), 120, 0, 0,pwm);
+  analogWrite(pwm1, mapped);
+  analogWrite(pwm3, mapped);
+}
+
+void move_anticlockwise()
+{
+  digitalWrite(dir1, HIGH);
+  digitalWrite(dir2, HIGH);
+  digitalWrite(dir3, HIGH);
+  digitalWrite(dir4, HIGH);
+  mapped = map(ps2x.Analog(PSS_RX), 120, 0, 0, 100);
+  analogWrite(pwm1, mapped);
+  analogWrite(pwm2, mapped);
+  analogWrite(pwm3, mapped);
+  analogWrite(pwm4, mapped);
+}
+
+void move_clockwise()
+{
+  digitalWrite(dir1, LOW);
+  digitalWrite(dir2, LOW);
+  digitalWrite(dir3, LOW);
+  digitalWrite(dir4, LOW);
+  mapped = map(ps2x.Analog(PSS_RX), 140, 255, 0, 100);
+  analogWrite(pwm1, mapped);
+  analogWrite(pwm2, mapped);
+  analogWrite(pwm3, mapped);
+  analogWrite(pwm4, mapped);
+}
+
+void initial_condition()
+{
+  analogWrite(pwm1, 0);
+  analogWrite(pwm2, 0);
+  analogWrite(pwm3, 0);
+  analogWrite(pwm4, 0);
+  digitalWrite(dir1, LOW);
+  digitalWrite(dir2, LOW);
+  digitalWrite(dir3, LOW);
+  digitalWrite(dir4, LOW);
+}
+
+
+void release_servo1() {
+  Servo1.write(45);                             // release from servo1
+  delay(300);
+}
+
+void release_servo2() {
+  Servo2.write(135);                              // release from servo2
+  delay(300);
+}
+
+void release_servo3() {
+  Servo3.write(45);                                // release from servo3
+  delay(300);
+}
+
+void release_servo4() {
+  Servo4.write(45);                               // release from servo4
+  delay(300);
+}
+
+void load_shuttle() {
+  Servo1.write(135);                            // load all the shuttlecocks
+  Servo2.write(45);          
+  Servo3.write(135);
+  Servo4.write(135);
+  delay(300);
+}
+
+void load_initialpostion() {
+  Servo1.write(90);                        // intial position for the comb
+  Servo2.write(90);
+  Servo3.write(90);
+  Servo4.write(90);
+  delay(300);
+}
+
